@@ -171,10 +171,12 @@
     canvas{width:100% !important; height:100% !important}
 
     #moreView{
-      flex:1;
-      min-height:0;
-      overflow:auto;
-    }
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+}
 
     .viewSeg{ margin-top:auto; }
 
@@ -184,6 +186,18 @@
       gap:10px;
       padding-top:4px;
     }
+    .moreTools{
+  margin-top:auto;     /* これで最下部に押し下げる */
+  display:flex;
+  gap:10px;
+  padding-top:12px;
+}
+.moreTools .btn{
+  flex:1;
+  justify-content:center;
+}
+    
+    
     .moreItem{
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
@@ -350,8 +364,18 @@
     </div>
 
     <div id="moreView" style="display:none;">
-      <div class="moreGrid" id="moreGrid"></div>
-    </div>
+  <div class="moreGrid" id="moreGrid"></div>
+
+  <!-- データ管理（エクスポート/インポート） -->
+  <div class="moreTools">
+    <button class="btn" type="button" onclick="exportCSV()">エクスポート</button>
+
+    <label class="btn" style="display:inline-flex;align-items:center;justify-content:center;">
+      <input id="importCsvInput" type="file" accept=".csv,text/csv" style="display:none" onchange="importCSVReplace(this)">
+      インポート
+    </label>
+  </div>
+</div>
 
     <div class="seg viewSeg" id="viewSeg">
       <button class="active" data-view="trend">Trend</button>
@@ -585,6 +609,66 @@ function mergeRows(){
     if(!deleted.has(r.date)) map.set(r.date, r);
   }
   return Array.from(map.values()).sort((a,b)=>a.date.localeCompare(b.date));
+}
+function exportCSV(){
+  const data = mergeRows();
+  if(!data.length) return alert('データがありません');
+
+  const headers = [
+    'date','weight_kg','bodyfat_pct','bmi','fitness_score',
+    'fatmass_kg','muscle_kg','skeletal_muscle_kg','visceral_fat_level'
+  ];
+
+  const v = (x)=> (x===null || x===undefined || Number.isNaN(x)) ? '' : String(x);
+  const rowsCsv = data.map(r => headers.map(h => v(r[h])).join(','));
+  const csv = [headers.join(','), ...rowsCsv].join('\n');
+
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `progressfit_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function importCSVReplace(input){
+  const file = input.files?.[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const text = String(reader.result || '').trim();
+      if(!text) return alert('CSVが空です');
+
+      if(!confirm('現在のデータを全置換してインポートする？')) return;
+
+      // 既存の parseCsv を利用（列順は BASE_CSV と同じ想定）
+      const imported = parseCsv(text);
+      if(!Array.isArray(imported) || !imported.length) return alert('CSVの形式が違うっぽい');
+
+      // 全置換：ベースにある日付で、インポートに無いものは「削除扱い」にする
+      const importedDates = new Set(imported.map(r=>r.date));
+      const deleted = baseRows
+        .filter(r => !importedDates.has(r.date))
+        .map(r => r.date);
+
+      saveAdds(imported);
+      saveDeleted(deleted);
+
+      rows = mergeRows();
+      alert('インポート完了');
+      render();
+    }catch(e){
+      alert('CSVの読み込みに失敗した（形式を確認してね）');
+    }finally{
+      input.value = '';
+    }
+  };
+  reader.readAsText(file, 'utf-8');
 }
 
 /* ===== state ===== */
