@@ -6,11 +6,12 @@
   <meta name="theme-color" content="#0b1220" />
   <title>ProgressFit</title>
 
-  <!-- PWA / icons (置いてあるなら効く) -->
-  <link rel="manifest" href="/manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+  <!-- PWA / icons-->
+      <!-- PWA manifest and icons use relative paths so they work on GitHub Pages -->
+      <link rel="manifest" href="manifest.webmanifest" />
+      <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+      <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+      <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="ProgressFit" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -53,10 +54,15 @@
     }
     .brand{display:flex; gap:10px; align-items:center; min-width:0}
     .logo{
-      width:40px; height:40px; border-radius:14px;
-      background:linear-gradient(135deg,rgba(106,227,255,.28),rgba(167,139,250,.22));
-      box-shadow:var(--shadow);
-      flex:0 0 auto;
+      width:40px;
+      height:40px;
+      border-radius:14px;
+      /* display the app icon instead of a gradient */
+      background-image: url('icon-192.png');
+      background-size: cover;
+      background-position: center;
+      box-shadow: var(--shadow);
+      flex: 0 0 auto;
     }
     .titlewrap{min-width:0}
     .title{font-size:18px; font-weight:900; margin:0; line-height:1.2}
@@ -168,13 +174,9 @@
     }
 
     .chartWrap{ position:relative; flex:1; min-height:0; }
-    /* iPhone UIバーでTrendが下見切れしない余白
-       ナビゲーションやホームインジケーターに隠れないよう、
-       safe-area-inset-bottomと十分な余白を確保する。
-       10pxでは足りない場合があるため、baseに30pxを加算し、
-       safe-area-inset-bottomも加味する。 */
     #trendView{
-      padding-bottom: calc(30px + env(safe-area-inset-bottom));
+      /* Increase bottom padding so the chart isn't cut off on devices with home indicators */
+      padding-bottom: calc(60px + env(safe-area-inset-bottom));
     }
     canvas{width:100% !important; height:100% !important}
 
@@ -491,12 +493,12 @@
 <script>
 /* ===== Base CSV（33件フル内包） ===== */
 const BASE_CSV = `date,weight_kg,bodyfat_pct,bmi,fitness_score,fatmass_kg,muscle_kg,skeletal_muscle_kg,visceral_fat_level
+2024-07-04,91.2,33.0,30.0,48,28.6,58.0,33.2,16
 2024-07-25,89.1,32.1,29.1,47,28.6,57.4,32.8,15
 2024-08-01,89.2,31.4,29.1,44,28.0,58.0,33.2,15
 2024-09-17,86.4,30.7,28.2,47,26.5,56.8,32.5,14
 2024-10-10,85.9,30.7,28.0,49,26.4,56.4,32.2,14
 2024-11-07,83.9,29.9,27.4,53,25.1,55.8,31.9,13
-2024-11-21,83.6,32.9,27.3,43,27.5,53.2,30.4,14
 2024-11-28,82.3,29.8,26.9,52,24.5,54.8,31.3,13
 2024-12-05,82.1,29.7,26.8,54,24.4,54.7,31.3,13
 2024-12-19,81.1,29.2,26.5,54,23.7,54.4,31.1,13
@@ -568,7 +570,7 @@ function parseCsv(csv){
 const baseRows = parseCsv(BASE_CSV);
 
 /* ===== targets ===== */
-const defaultTargets = { weight_kg: 75.0, bodyfat_pct: 20.0, fatmass_kg: 16.0, muscle_kg: 55.0, height_cm: null };
+const defaultTargets = { weight_kg: 72.0, bodyfat_pct: 20.0, fatmass_kg: 14.0, muscle_kg: 54.0, height_cm: null };
 let targets = loadTargets();
 function loadTargets(){
   try{
@@ -1149,37 +1151,59 @@ async function exportPdf() {
     const rows1y = all.filter(r => new Date(r.date) >= startDate);
     // PDF生成
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    // 表紙ページ: タイトルと期間
-    doc.setFontSize(16);
-    doc.text('ProgressFit レポート', 10, 15);
-    doc.setFontSize(10);
+    // Helper: convert text into PNG image via canvas so that Japanese characters render correctly
+    async function createTextImage(text, fontSize, width, height) {
+      // width/height in px
+      const c = document.createElement('canvas');
+      c.width = width;
+      c.height = height;
+      const ctx = c.getContext('2d');
+      // dark background matching app
+      ctx.fillStyle = '#0D2340';
+      ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 5, height / 2);
+      return c.toDataURL('image/png');
+    }
+
+    // Period text
     const from = rows1y[0].date;
     const to = rows1y[rows1y.length - 1].date;
-    doc.text(`期間: ${from} ～ ${to} (直近1年)`, 10, 22);
+    const titleImg = await createTextImage('ProgressFit レポート', 20, 600, 40);
+    const periodImg = await createTextImage(`期間: ${from} ～ ${to} (直近1年)`, 12, 600, 30);
     // グラフ生成関数: 指定したメトリックの画像を返す
-    async function createChartImage(metricKey){
-      return new Promise((resolve)=>{
+    async function createChartImage(metricKey) {
+      return new Promise((resolve) => {
         const canvas = document.createElement('canvas');
         canvas.width = 600;
         canvas.height = 300;
         const ctx = canvas.getContext('2d');
-        const labels = rows1y.map(r => r.date);
-        const values = rows1y.map(r => {
+        // dark background fill matching the app
+        ctx.fillStyle = '#0D2340';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const labels = rows1y.map((r) => r.date);
+        const values = rows1y.map((r) => {
           const v = r[metricKey];
-          return (v===null||v===undefined||Number.isNaN(v)) ? null : v;
+          return v === null || v === undefined || Number.isNaN(v) ? null : v;
         });
-        // 構成
         const cfg = {
           type: 'line',
           data: {
             labels: labels,
-            datasets: [{
-              label: METRICS[metricKey].name + (METRICS[metricKey].unit ? ` (${METRICS[metricKey].unit})` : ''),
-              data: values,
-              fill: false,
-              tension: 0.1,
-              // Chart.jsがデフォルト色を設定するので色指定を省略
-            }]
+            datasets: [
+              {
+                label:
+                  METRICS[metricKey].name +
+                  (METRICS[metricKey].unit ? ` (${METRICS[metricKey].unit})` : ''),
+                data: values,
+                fill: false,
+                tension: 0.1,
+                borderColor: '#6f97ff',
+                backgroundColor: '#6f97ff'
+              }
+            ]
           },
           options: {
             responsive: false,
@@ -1204,9 +1228,6 @@ async function exportPdf() {
                 }
               },
               y: {
-                title: {
-                  display: false
-                },
                 ticks: {
                   color: '#ffffff'
                 },
@@ -1218,7 +1239,6 @@ async function exportPdf() {
           }
         };
         const chart = new Chart(ctx, cfg);
-        // 少し待ってから画像を取得して破棄
         setTimeout(() => {
           const img = chart.toBase64Image();
           chart.destroy();
@@ -1229,21 +1249,29 @@ async function exportPdf() {
     // 出力対象メトリック: MAIN_METRICS + MORE_METRICS
     const metricsToExport = [...MAIN_METRICS, ...MORE_METRICS];
     let firstGraph = true;
-    for(const m of metricsToExport){
+    for (const m of metricsToExport) {
       // グラフ画像を生成
       const imgData = await createChartImage(m);
-      // 最初のグラフは表紙に載せる、それ以外は新ページ
-      if(firstGraph){
-        doc.setFontSize(14);
-        doc.text(`${METRICS[m].name}`, 10, 32);
-        // グラフを配置: 幅190mm 高さ100mm
-        doc.addImage(imgData, 'PNG', 10, 35, 190, 100);
+      if (firstGraph) {
+        // 表紙ページ: 背景塗り潰し
+        doc.setFillColor(13, 35, 64);
+        doc.rect(0, 0, 210, 297, 'F');
+        // タイトル・期間
+        doc.addImage(titleImg, 'PNG', 10, 10, 190, 15);
+        doc.addImage(periodImg, 'PNG', 10, 27, 190, 10);
+        // グラフタイトル
+        const metricTitleImg = await createTextImage(METRICS[m].name, 14, 600, 25);
+        doc.addImage(metricTitleImg, 'PNG', 10, 40, 190, 10);
+        // グラフ
+        doc.addImage(imgData, 'PNG', 10, 50, 190, 100);
         firstGraph = false;
       } else {
         doc.addPage();
-        doc.setFontSize(14);
-        doc.text(`${METRICS[m].name}`, 10, 15);
-        doc.addImage(imgData, 'PNG', 10, 18, 190, 100);
+        doc.setFillColor(13, 35, 64);
+        doc.rect(0, 0, 210, 297, 'F');
+        const metricTitleImg = await createTextImage(METRICS[m].name, 14, 600, 25);
+        doc.addImage(metricTitleImg, 'PNG', 10, 10, 190, 10);
+        doc.addImage(imgData, 'PNG', 10, 20, 190, 100);
       }
     }
     // PDFを保存
@@ -1283,17 +1311,14 @@ function handleImportFiles(files){
           visceral_fat_level: numOrNull(cols[8]),
         });
       }
-      // 現在の追加データと削除データを取得
-      let adds = loadAdds();
-      let deleted = loadDeleted();
-      // インポートした各行を追加または更新
-      for(const row of imported){
-        // 既存の追加データから同じ日付を取り除く
-        adds = adds.filter(r=>r.date !== row.date);
-        adds.push(row);
-        // 削除リストから対象日付を除外
-        deleted = deleted.filter(d=>d !== row.date);
-      }
+      /*
+       * インポートしたデータで既存のベースデータを置き換える。
+       * ベースCSVの行すべてを削除リストに登録し、インポートした行を追加データとして保存する。
+       * こうすることで初期データは表示されなくなり、インポートしたデータのみが有効になる。
+       */
+      const baseDates = baseRows.map(r => r.date);
+      const adds = imported;
+      const deleted = baseDates;
       saveAdds(adds);
       saveDeleted(deleted);
       rows = mergeRows();
