@@ -368,13 +368,10 @@
 
   <!-- データ管理（エクスポート/インポート） -->
   <div class="moreTools">
-    <button class="btn" type="button" onclick="exportCSV()">エクスポート</button>
+  <button class="btn" type="button" onclick="exportCSV()">エクスポート</button>
 
-    <label class="btn" style="display:inline-flex;align-items:center;justify-content:center;">
-      <input id="importCsvInput" type="file" accept=".csv,text/csv" style="display:none" onchange="importCSVReplace(this)">
-      インポート
-    </label>
-  </div>
+  <input id="importCsvInput" type="file" accept=".csv,text/csv" style="display:none" onchange="importCSVReplace(this)">
+  <button class="btn" type="button" onclick="document.getElementById('importCsvInput').click()">インポート</button>
 </div>
 
     <div class="seg viewSeg" id="viewSeg">
